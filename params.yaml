@@ -1,4 +1,4 @@
-model_name_or_path: unicamp-dl/ptt5-base-portuguese-vocab 
+model_name_or_path: models/mt5-base-chinese
 do_lower_case: false
 deepspeed: false
 
@@ -15,49 +15,34 @@ weight_decay: 1e-5
 
 # preprocess dataset
 project: [
-  form,
+  milcause,
   ]
 raw_data_file: [
-  data/raw/sample_train.json
+  data/raw/train.json
   ]
 raw_valid_data_file: [
   null,
   ]
 raw_test_data_file: [
-  data/raw/sample_test.json
+  data/raw/test.json
   ]
-train_file: data/processed/train-v0.1.json
-valid_file: data/processed/dev-v0.1.json
-test_file: data/processed/test-v0.1.json
-type_names: [
-  form.etiqueta,
-  form.agencia,
-  form.conta_corrente,
-  form.cpf,
-  form.nome_completo,
-  form.n_doc_serie,
-  form.orgao_emissor,
-  form.data_emissao,
-  form.data_nascimento,
-  form.nome_mae,
-  form.nome_pai,
-  form.endereco,
-  ]
-use_compound_question: [
-  form.endereco,
-  ]
+train_file: data/processed/train.json
+valid_file: data/processed/dev.json
+test_file: data/processed/test.json
+type_names: [milcause.causal_relations]
+use_compound_question: []
 return_raw_text: [
   null,
   ]
 
 train_force_qa: true
 train_choose_question: first
-valid_percent: 0.2
+valid_percent: 0.1
 context_content: windows_token
-window_overlap: 0.2
-max_windows: 3
+window_overlap: 0.1
+max_windows: 2
 max_size: 2048
-max_seq_length: 512
+max_seq_length: 2048
 
 # dataset
 train_batch_size: 8
@@ -66,28 +51,28 @@ shuffle_train: true
 use_sentence_id: false
 negative_ratio: -1
 
-seed: 20210519
-num_workers: 6
+seed: 42
+num_workers: 16
 
 # inference and post-processing
-num_beams: 5
-max_length: 200
+num_beams: 4
+max_length: 1024
 get_highestprob_answer: true
-split_compound_answers: true
+split_compound_answers: false
 group_qas: true
-normalize_outputs: true
+normalize_outputs: false
 only_misprediction_outputs: true
 use_cached_predictions: true
 
 # Trainer
 accelerator: auto
 devices: auto
-max_epochs: 26
+max_epochs: 3
 deterministic: true
 accumulate_grad_batches: 2
 amp_backend: native
-precision: 32
+precision: 16
 gradient_clip_val: 1.0
 val_check_interval: 1.0
-check_val_every_n_epoch: 2
+check_val_every_n_epoch: 1
 limit_val_batches: 0.5
