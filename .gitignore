@@ -6,6 +6,10 @@
 # Node artifact files
 node_modules/
 dist/
+models/
+output/**/*
+!output/**/*.txt
+!output/**/.gitkeep
 
 # Compiled Java class files
 *.class
