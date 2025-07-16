@@ -163,7 +163,6 @@ class LitQA(QAClassifier, pl.LightningModule):
     def validation_epoch_end(self, outputs):
         predictions, labels = [], []
         debug_samples = []
-
         for output in outputs:
             for label, pred in zip(output['labels'], output['preds']):
                 predictions.append(pred)
@@ -171,82 +170,55 @@ class LitQA(QAClassifier, pl.LightningModule):
                 if len(debug_samples) < 3:
                     debug_samples.append({"label": label, "prediction": pred})
 
+        # 保存调试文件
+        output_dir = self.hparams.output_dir if self.hparams.output_dir else "."
+        debug_dir = os.path.join(output_dir, "debug")
+        os.makedirs(debug_dir, exist_ok=True)
+        epoch_num = self.current_epoch
+        debug_filename = f"epoch_{epoch_num}_samples.json"
+        debug_output_path = os.path.join(debug_dir, debug_filename)
         if debug_samples:
-            debug_output_path = 'debug.json'
             try:
                 with open(debug_output_path, 'w', encoding='utf-8') as f:
                     json.dump(debug_samples, f, ensure_ascii=False, indent=4)
-                print(f"\nSaved 3 debug samples to {debug_output_path}")
+                print(f"\nSaved {len(debug_samples)} debug samples for epoch {epoch_num} to {debug_output_path}")
             except Exception as e:
-                print(f"\nFailed to save debug samples: {e}")
+                print(f"\nFailed to save debug samples for epoch {epoch_num}: {e}")
 
         # 调用新的评估函数，并记录所有指标
-        # 诊断代码
-        print("\n" + "=" * 20 + " DEBUGGING EVALUATION INPUTS " + "=" * 20)
-        print(f"Total samples to evaluate: {len(labels)}")
-        if len(labels) > 0:
-            print("--- First Sample ---")
-            print(f"Label being passed to eval:\n{labels[0]}")
-            print(f"Prediction being passed to eval:\n{predictions[0]}")
-        print("=" * 60 + "\n")
-        # --- 诊断代码结束 ---
+        results = t5_qa_evaluate(labels, predictions)
 
-        # 我们将json_mode硬编码为True，因为这个项目就是为此设计的
-        results = t5_qa_evaluate(labels, predictions, json_mode=True)
-
-        precision = torch.tensor(results.get('precision', 0.0))
-        recall = torch.tensor(results.get('recall', 0.0))
-        f1 = torch.tensor(results.get('f1', 0.0))
-        exact = torch.tensor(results.get('exact', 0.0))
-        bleu = torch.tensor(results.get('bleu', 0.0))
-        rougeL = torch.tensor(results.get('rougeL', 0.0))
-
-        log = {
-            'val_precision': precision,
-            'val_recall': recall,
-            'val_f1': f1,
-            'val_exact': exact,
-            'val_bleu': bleu,
-            'val_rougeL': rougeL,
-        }
+        # 为了方便日志记录和终端显示，我们提取所有关键指标
+        log = {f'val_{k}': torch.tensor(v) for k, v in results.items()}
         self.log_dict(log, logger=True, prog_bar=True, on_epoch=True)
 
-        # 打印更详细的验证信息
-        print(f"\nValidation Metrics: "
-              f"Precision: {precision.item():.2f}, "
-              f"Recall: {recall.item():.2f}, "
-              f"F1: {f1.item():.2f}, "
-              f"Exact: {exact.item():.2f}, "
-              f"BLEU: {bleu.item():.2f}, "
-              f"ROUGE-L: {rougeL.item():.2f}")
+        # 打印一个更全面的验证摘要
+        print(f"\nValidation Metrics (Epoch {epoch_num}):")
+        print(f"  - Relaxed F1 (Core Logic): {results.get('relaxed_f1', 0.0):.2f}")
+        print(f"  - Strict F1 (Perfect Match): {results.get('strict_f1', 0.0):.2f}")
+        print(f"  - BLEU (Vocabulary): {results.get('bleu', 0.0):.2f}")
+        print(f"  - ROUGE-L (Vocabulary): {results.get('rougeL', 0.0):.2f}")
 
     def test_epoch_end(self, outputs):
-        # 1. 获取并创建我们指定的输出目录
         output_dir = self.hparams.output_dir
         os.makedirs(output_dir, exist_ok=True)
         print(f"INFO: Final output files will be saved to: {output_dir}")
-
-        # 2. 定义预测结果的缓存文件路径
         base_cache_name = os.path.basename(self.cache_fname)
         prediction_cache_path = os.path.join(output_dir, base_cache_name.replace("cached_", "cached_preds_"))
 
-        # 3. 收集所有批次的输出
-        predictions, labels, document_ids, typename_ids, probs = [], [], [], [], []
-        window_ids = []  # 初始化
-
+        predictions, labels, document_ids, typename_ids, probs, window_ids = [], [], [], [], [], []
         for output in outputs:
             if 'probs' in output:
                 for label, pred, doc_id, tn_id, prob in zip(
                         output['labels'], output['preds'],
                         output['doc_ids'], output['tn_ids'], output['probs']):
-                    predictions.append(pred)
-                    labels.append(label)
+                    predictions.append(pred);
+                    labels.append(label);
                     document_ids.append(doc_id)
-                    typename_ids.append(tn_id)
-                    probs.append(prob)
+                    typename_ids.append(tn_id);
+                    probs.append(prob);
                     window_ids.append(output.get('window_id', 0))
 
-        # 4. 处理预测结果的缓存
         if self.hparams.use_cached_predictions and os.path.exists(prediction_cache_path):
             print(f'Loading predictions from cached file {prediction_cache_path}')
             cached_df = pd.read_pickle(prediction_cache_path)
@@ -299,34 +271,39 @@ class LitQA(QAClassifier, pl.LightningModule):
             document_classes=list(disjoint_answer_idx_by_doc_class.keys())
         )
 
-        excel_writer_client = pd.ExcelWriter(os.path.join(output_dir, 'outputs_sheet_client.xlsx'))
-        all_idx = []
-        for document_class, indices in disjoint_answer_idx_by_doc_class.items():
-            qid_dict_by_typenames['DISJOINT_' + document_class] = indices
-            qid_dict_by_documents['DISJOINT_' + document_class] = indices
-            all_idx += indices
-            self._save_sheets(labels, predictions, document_ids, typename_ids, probs, document_class, indices,
-                              excel_writer_client)
-        excel_writer_client.close()
-
-        qid_dict_by_typenames['DISJOINT_ALL'] = all_idx
-        qid_dict_by_documents['DISJOINT_ALL'] = all_idx
-        self._save_sheets(labels, predictions, document_ids, typename_ids, probs, 'all', all_idx, output_dir=output_dir)
+        # --- 核心修改：只在有数据时才创建和保存Excel文件 ---
+        if disjoint_answer_idx_by_doc_class:
+            excel_writer_client = pd.ExcelWriter(os.path.join(output_dir, 'outputs_sheet_client.xlsx'))
+            all_idx = []
+            for document_class, indices in disjoint_answer_idx_by_doc_class.items():
+                qid_dict_by_typenames['DISJOINT_' + document_class] = indices
+                qid_dict_by_documents['DISJOINT_' + document_class] = indices
+                all_idx += indices
+                self._save_sheets(labels, predictions, document_ids, typename_ids, probs, document_class, indices,
+                                  excel_writer_client)
+            excel_writer_client.close()
+            qid_dict_by_typenames['DISJOINT_ALL'] = all_idx
+            qid_dict_by_documents['DISJOINT_ALL'] = all_idx
+            self._save_sheets(labels, predictions, document_ids, typename_ids, probs, 'all', all_idx,
+                              output_dir=output_dir)
 
         # 7. 计算并保存最终指标文件
-        results_by_typenames = t5_qa_evaluate(labels, predictions, qid_dict=qid_dict_by_typenames, json_mode=True)
-        results_by_documents = t5_qa_evaluate(labels, predictions, qid_dict=qid_dict_by_documents, json_mode=True)
+        results_by_typenames = t5_qa_evaluate(labels, predictions, qid_dict=qid_dict_by_typenames)
 
-        with open(os.path.join(output_dir, 'metrics_by_typenames.json'), 'w') as f:
+        # 将这份完整的、包含所有严格和宽松指标的报告，保存到JSON文件
+        with open(os.path.join(output_dir, 'final_evaluation_report.json'), 'w') as f:
             json.dump(results_by_typenames, f, indent=4)
-        with open(os.path.join(output_dir, 'metrics_by_documents.json'), 'w') as f:
-            json.dump(results_by_documents, f, indent=4)
 
-        # 8. 记录最终指标到日志
-        final_f1 = torch.tensor(results_by_typenames.get('f1', 0.0))
-        final_exact = torch.tensor(results_by_typenames.get('exact', 0.0))
-        log = {'test_f1': final_f1, 'test_exact': final_exact}
-        self.log_dict(log, logger=True, on_epoch=True)
+        print("\n--- Final Test Evaluation Report ---")
+        print(json.dumps(results_by_typenames, indent=4))
+        print(f"\nComplete evaluation report saved to {os.path.join(output_dir, 'final_evaluation_report.json')}")
+
+        # 日志记录最终的核心指标
+        final_log = {
+            'test_relaxed_f1': torch.tensor(results_by_typenames.get('relaxed_f1', 0.0)),
+            'test_strict_f1': torch.tensor(results_by_typenames.get('strict_f1', 0.0))
+        }
+        self.log_dict(final_log, logger=True, on_epoch=True)
 
     @torch.no_grad()
     def _compute_probs(self, sentences, predictions):
@@ -384,34 +361,33 @@ class LitQA(QAClassifier, pl.LightningModule):
     def _save_outputs(self, labels, predictions, doc_or_tn_ids, probs, window_ids, qid_dict=None, outputs_fname='outputs.txt', document_classes=["form"]):
         # This method's logic for writing to a file remains correct, as the fname is now a full path.
         if qid_dict is None: qid_dict = {}
-        with open(outputs_fname, 'w') as f:
+        # --- 核心修改：将所有写入操作都放在 with 代码块内部 ---
+        with open(outputs_fname, 'w', encoding='utf-8') as f:
             f.write('{0:<50} | {1:50} | {2:30} | {3} | {4}\n'.format('label', 'prediction', 'uuid', 'prob', 'window'))
-        if qid_dict == {}:
-            for label, prediction, doc_or_tn_id, prob, w_id in zip(
-                labels, predictions, doc_or_tn_ids, probs, window_ids):
-                lab, pred = label, prediction
-                if self.hparams.normalize_outputs:
-                    lab, pred = normalize_answer(label), normalize_answer(prediction)
-                if lab != pred or lab == pred and not self.hparams.only_misprediction_outputs:
-                    f.write('{0:<50} | {1:50} | {2:30} | {3} | {4}\n'.format(
-                        label, prediction, doc_or_tn_id, prob, w_id))
-        else:
-            for (kword, list_indices) in qid_dict.items():
-                # do not print for ORIG, DISJOINT* and all samples for a specific project/document class
-                # those groups are important for metrics, not for outputs visualization
-                if kword == 'ORIG' or kword.startswith('DISJOINT') or kword in document_classes: 
-                    continue
-                f.write(f'===============\n{kword}\n===============\n')
-                for idx in list_indices:
-                    label, prediction, doc_or_tn_id, prob, w_id = \
-                        labels[idx], predictions[idx], doc_or_tn_ids[idx], probs[idx], window_ids[idx]
+
+            if not qid_dict:
+                for label, prediction, doc_or_tn_id, prob, w_id in zip(
+                        labels, predictions, doc_or_tn_ids, probs, window_ids):
                     lab, pred = label, prediction
                     if self.hparams.normalize_outputs:
                         lab, pred = normalize_answer(label), normalize_answer(prediction)
                     if lab != pred or lab == pred and not self.hparams.only_misprediction_outputs:
                         f.write('{0:<50} | {1:50} | {2:30} | {3} | {4}\n'.format(
                             label, prediction, doc_or_tn_id, prob, w_id))
-        f.close()
+            else:
+                for (kword, list_indices) in qid_dict.items():
+                    if kword == 'ORIG' or kword.startswith('DISJOINT') or kword in document_classes:
+                        continue
+                    f.write(f'===============\n{kword}\n===============\n')
+                    for idx in list_indices:
+                        label, prediction, doc_or_tn_id, prob, w_id = \
+                            labels[idx], predictions[idx], doc_or_tn_ids[idx], probs[idx], window_ids[idx]
+                        lab, pred = label, prediction
+                        if self.hparams.normalize_outputs:
+                            lab, pred = normalize_answer(label), normalize_answer(prediction)
+                        if lab != pred or lab == pred and not self.hparams.only_misprediction_outputs:
+                            f.write('{0:<50} | {1:50} | {2:30} | {3} | {4}\n'.format(
+                                label, prediction, doc_or_tn_id, prob, w_id))
 
     def _save_sheets(self, labels, predictions, document_ids, typename_ids, probs, document_class, indices, writer=None, output_dir="."):
         # Saving disjoint predictions (splitted and clean) in a dataframe
