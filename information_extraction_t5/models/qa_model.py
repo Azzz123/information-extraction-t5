@@ -171,25 +171,25 @@ class LitQA(QAClassifier, pl.LightningModule):
                 if len(debug_samples) < 3:
                     debug_samples.append({"label": label, "prediction": pred})
 
+        # 2. 在输出目录中创建 'debug' 子目录
+        output_dir = self.hparams.output_dir if self.hparams.output_dir else "."
+        debug_dir = os.path.join(output_dir, "debug")
+        os.makedirs(debug_dir, exist_ok=True)
+
+        # 3. 获取当前epoch号，并构造一个独一无二的文件名
+        epoch_num = self.current_epoch
+        debug_filename = f"epoch_{epoch_num}_samples.json"
+        debug_output_path = os.path.join(debug_dir, debug_filename)
+
+        # 4. 将这个epoch的调试样本保存到它自己的文件中
         if debug_samples:
-            debug_output_path = 'debug.json'
             try:
                 with open(debug_output_path, 'w', encoding='utf-8') as f:
                     json.dump(debug_samples, f, ensure_ascii=False, indent=4)
-                print(f"\nSaved 3 debug samples to {debug_output_path}")
+                # 打印一个更清晰的保存信息
+                print(f"\nSaved {len(debug_samples)} debug samples for epoch {epoch_num} to {debug_output_path}")
             except Exception as e:
-                print(f"\nFailed to save debug samples: {e}")
-
-        # 调用新的评估函数，并记录所有指标
-        # 诊断代码
-        print("\n" + "=" * 20 + " DEBUGGING EVALUATION INPUTS " + "=" * 20)
-        print(f"Total samples to evaluate: {len(labels)}")
-        if len(labels) > 0:
-            print("--- First Sample ---")
-            print(f"Label being passed to eval:\n{labels[0]}")
-            print(f"Prediction being passed to eval:\n{predictions[0]}")
-        print("=" * 60 + "\n")
-        # --- 诊断代码结束 ---
+                print(f"\nFailed to save debug samples for epoch {epoch_num}: {e}")
 
         # 我们将json_mode硬编码为True，因为这个项目就是为此设计的
         results = t5_qa_evaluate(labels, predictions, json_mode=True)

@@ -71,7 +71,7 @@ use_cached_predictions: true
 # Trainer
 accelerator: auto
 devices: auto
-max_epochs: 1
+max_epochs: 5
 deterministic: true
 accumulate_grad_batches: 2
 amp_backend: native
