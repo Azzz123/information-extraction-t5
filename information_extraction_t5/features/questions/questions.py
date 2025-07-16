@@ -89,6 +89,18 @@ _QUESTIONS_FORM = {
 }
 
 # Include here other pairs (project, questions dict) for new datasets
+# MilCause 项目定义问题
+_QUESTIONS_MILCAUSE = {
+    "milcause.causal_relations": [
+        "请基于上下文和给定的候选对，以JSON列表格式，筛选并输出所有真实存在的因果关系对。",
+        "识别并提取文本中的所有因果事件对，并以JSON列表格式输出。",
+        "本文档中存在哪些因果关系？请以JSON列表的形式返回结果。",
+    ]
+}
+
+# Include here other pairs (project, questions dict) for new datasets
 QUESTIONS = {
     'form': _QUESTIONS_FORM,
+    # 2. 将我们的项目添加到主字典中
+    'milcause': _QUESTIONS_MILCAUSE,
 }

@@ -40,7 +40,13 @@ TYPENAME_TO_TYPE = {
 }
 TYPENAME_TO_TYPE.update(_FORM_TYPENAME_TO_TYPE)
 # TYPENAME_TO_TYPE.update(_NEWDATASET_TYPENAME_TO_TYPE)
+# MilCause 项目定义类型映射
+_MILCAUSE_TYPENAME_TO_TYPE = {
+    "milcause.causal_relations": "CausalRelations"
+}
 
+# 新映射更新到主字典中
+TYPENAME_TO_TYPE.update(_MILCAUSE_TYPENAME_TO_TYPE)
 # This dict is used to recover the type-name by using the type. It is not
 # critical to recover exactly the original type-name (different typenames
 # can be mapped to the same type). Those type-names will be used in post
