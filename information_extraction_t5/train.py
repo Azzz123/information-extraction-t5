@@ -16,7 +16,7 @@ from pytorch_lightning.plugins import DeepSpeedPlugin
 from information_extraction_t5.models.qa_model import LitQA
 from information_extraction_t5.data.qa_data import QADataModule
 
-MODEL_DIR = 'lightning_logs'
+# MODEL_DIR = 'lightning_logs'
 
 def main():
     """Train."""
@@ -26,6 +26,9 @@ def main():
         config_file_parser_class=configargparse.YAMLConfigFileParser)
     parser.add_argument('-c', '--my-config', required=True, is_config_file=True,
         help='config file path')
+
+    parser.add_argument('--save_dir', type=str, default='output/checkpoints',
+        help='Directory to save model checkpoints.')
 
     # optimizer parameters
     parser.add_argument('--optimizer', type=str, default='Adam')
@@ -75,69 +78,81 @@ def main():
         every_n_train_steps = math.ceil(
             len(dm.train_dataset) / (args.train_batch_size * args.accumulate_grad_batches))
         checkpoint_callback = ModelCheckpoint(
-            dirpath=MODEL_DIR, filename='{epoch}-{train_loss:.4f}',
+            dirpath=args.save_dir, filename='{epoch}-{train_loss:.4f}',
             monitor='train_loss_step', verbose=False, save_last=False, save_top_k=args.max_epochs,
             save_weights_only=True, mode='min', every_n_train_steps=every_n_train_steps
         )
     else:
         checkpoint_callback = ModelCheckpoint(
-            dirpath=MODEL_DIR, filename='{epoch}-{val_exact:.2f}-{val_f1:.2f}',
+            dirpath=args.save_dir, filename='{epoch}-{val_exact:.2f}-{val_f1:.2f}',
             monitor='val_exact', verbose=False, save_last=False, save_top_k=5,
             save_weights_only=False, mode='max', every_n_epochs=1
         )
 
     # Instantiate LearningRateMonitor Callback
-    lr_logger = LearningRateMonitor(logging_interval='epoch')
+        # --- START: MODIFIED LOGGER AND CALLBACKS LOGIC ---
 
-    # Set neptune logger
-    if args.neptune:
-        neptune_logger = NeptuneLogger(
-            api_key=os.environ.get('NEPTUNE_API_TOKEN'),
-            project=args.neptune_project,
-            name=args.experiment_name,
-            mode='async',  # Possible values "async", "sync", "offline", and "debug", "read-only"
-            run=None,  # Set run's identifier like 'SAN-1' in case of resuming a tracked run
-            tags=args.tags,
-            log_model_checkpoints=False,
-            source_files=["**/*.py", "*.yaml"],
-            capture_stdout=False,
-            capture_stderr=False,
-            capture_hardware_metrics=False,
-        )
-    else:
-        neptune_logger = None
-
-    if args.deepspeed:
-        deepspeed_plugin = DeepSpeedPlugin(
-            stage=2,
-            offload_optimizer=True,
-            offload_parameters=True,
-            allgather_bucket_size=2e8,
-            reduce_bucket_size=2e8,
-            allgather_partitions=True,
-            reduce_scatter=True,
-            overlap_comm=True,
-            contiguous_gradients=True,
-            ## Activation Checkpointing
-            partition_activations=True,
-            cpu_checkpointing=True,
-            contiguous_memory_optimization=True,
-        )
-    else:
-        deepspeed_plugin = None
-
-    # Defining the Trainer, training... and finally testing
-    trainer = Trainer.from_argparse_args(
-        args,
-        logger=neptune_logger,
-        plugins=deepspeed_plugin,
-        callbacks=[
-            lr_logger,
+        # 1. 初始化一个包含通用回调函数的基础列表
+        callbacks_list = [
             checkpoint_callback,
             RichProgressBar(),
             RichModelSummary(max_depth=2)
         ]
-    )
+
+        # 2. 条件化地设置日志记录器和依赖它的回调函数
+        if args.neptune:
+            # 只有在启用neptune时，才创建和使用neptune logger
+            neptune_logger = NeptuneLogger(
+                api_key=os.environ.get('NEPTUNE_API_TOKEN'),
+                project=args.neptune_project,
+                name=args.experiment_name,
+                mode='async',
+                run=None,
+                tags=args.tags,
+                log_model_checkpoints=False,
+                source_files=["**/*.py", "*.yaml"],
+                capture_stdout=False,
+                capture_stderr=False,
+                capture_hardware_metrics=False,
+            )
+            # 同样，只有在启用neptune时，才创建和添加学习率监视器
+            lr_logger = LearningRateMonitor(logging_interval='epoch')
+            callbacks_list.append(lr_logger)
+        else:
+            # 如果不使用neptune，logger就设为None
+            neptune_logger = None
+
+        # --- END: MODIFIED LOGGER AND CALLBACKS LOGIC ---
+
+        if args.deepspeed:
+            deepspeed_plugin = DeepSpeedPlugin(
+                stage=2,
+                offload_optimizer=True,
+                offload_parameters=True,
+                allgather_bucket_size=2e8,
+                reduce_bucket_size=2e8,
+                allgather_partitions=True,
+                reduce_scatter=True,
+                overlap_comm=True,
+                contiguous_gradients=True,
+                ## Activation Checkpointing
+                partition_activations=True,
+                cpu_checkpointing=True,
+                contiguous_memory_optimization=True,
+            )
+        else:
+            deepspeed_plugin = None
+
+        # Defining the Trainer, training... and finally testing
+        trainer = Trainer.from_argparse_args(
+            args,
+            logger=neptune_logger,
+            plugins=deepspeed_plugin,
+            # 使用我们条件化构建好的回调函数列表
+            callbacks=callbacks_list
+        )
+
+    # -------------------- END OF REPLACEMENT BLOCK --------------------
     trainer.fit(model, datamodule=dm)
 
     dm.setup('test')

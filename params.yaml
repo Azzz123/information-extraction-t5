@@ -1,3 +1,7 @@
+default_root_dir: output
+save_dir: output/checkpoints
+cache_dir: output/cache
+output_dir: output/results
 model_name_or_path: models/mt5-base-chinese
 do_lower_case: false
 deepspeed: false
@@ -10,7 +14,7 @@ tags: [ptt5, compound]
 
 # optimizer
 optimizer: AdamW
-lr: 1e-4
+lr: 1e-5
 weight_decay: 1e-5
 
 # preprocess dataset
@@ -39,10 +43,10 @@ train_force_qa: true
 train_choose_question: first
 valid_percent: 0.1
 context_content: windows_token
-window_overlap: 0.1
-max_windows: 2
-max_size: 2048
-max_seq_length: 2048
+window_overlap: 0
+max_windows: 1
+max_size: 1024
+max_seq_length: 1024
 
 # dataset
 train_batch_size: 8
@@ -67,12 +71,12 @@ use_cached_predictions: true
 # Trainer
 accelerator: auto
 devices: auto
-max_epochs: 3
+max_epochs: 2
 deterministic: true
 accumulate_grad_batches: 2
 amp_backend: native
-precision: 16
+precision: 32
 gradient_clip_val: 1.0
 val_check_interval: 1.0
 check_val_every_n_epoch: 1
-limit_val_batches: 0.5
+limit_val_batches: 1
