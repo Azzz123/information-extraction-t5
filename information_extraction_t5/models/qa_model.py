@@ -180,7 +180,17 @@ class LitQA(QAClassifier, pl.LightningModule):
             except Exception as e:
                 print(f"\nFailed to save debug samples: {e}")
 
-        # --- 核心修改：调用新的评估函数，并记录所有指标 ---
+        # 调用新的评估函数，并记录所有指标
+        # 诊断代码
+        print("\n" + "=" * 20 + " DEBUGGING EVALUATION INPUTS " + "=" * 20)
+        print(f"Total samples to evaluate: {len(labels)}")
+        if len(labels) > 0:
+            print("--- First Sample ---")
+            print(f"Label being passed to eval:\n{labels[0]}")
+            print(f"Prediction being passed to eval:\n{predictions[0]}")
+        print("=" * 60 + "\n")
+        # --- 诊断代码结束 ---
+
         # 我们将json_mode硬编码为True，因为这个项目就是为此设计的
         results = t5_qa_evaluate(labels, predictions, json_mode=True)
 
@@ -322,19 +332,23 @@ class LitQA(QAClassifier, pl.LightningModule):
     def _compute_probs(self, sentences, predictions):
         probs = []
         for sentence, prediction in zip(sentences, predictions):
-            input_ids = self.tokenizer.encode(sentence, truncation=True, 
-                max_length=self.input_max_length, return_tensors="pt").to(self.device).long()
-            output_ids = self.tokenizer.encode(prediction, truncation=True, 
-                max_length=self.input_max_length, return_tensors="pt").to(self.device).long()
-            if output_ids.shape[1] == 0: # Handle empty predictions
+            input_ids = self.tokenizer.encode(sentence, truncation=True,
+                                              max_length=self.input_max_length, return_tensors="pt").to(
+                self.device).long()
+            output_ids = self.tokenizer.encode(prediction, truncation=True,
+                                               max_length=self.input_max_length, return_tensors="pt").to(
+                self.device).long()
+            if output_ids.shape[1] == 0:  # Handle empty predictions
                 probs.append(0.0)
                 continue
             outputs = self.model(input_ids=input_ids, labels=output_ids)
 
             loss = outputs[0]
-            prob = torch.exp(-loss).item() # Simplified probability
-            prob = np.exp(prob.cpu().numpy())
-            probs.append(prob)
+            # --- 核心修改在这里 ---
+            # .item() 直接得到浮点数，然后我们用 np.exp 计算概率
+            prob_item = torch.exp(-loss).item()
+            probs.append(np.exp(prob_item))  # 使用 numpy.exp 是更稳健的做法
+
         return probs
 
     def _backup_outputs(self, labels, predictions, document_ids, typename_ids, probs, window_ids, backup_path):
@@ -509,7 +523,7 @@ class LitQA(QAClassifier, pl.LightningModule):
                             help="Number of beams for beam search. 1 means no beam search.")
         parser.add_argument("--get_highestprob_answer", action="store_true",
                             help="If true, get the answer from the sliding-window that gives highest probability.")
-        parser.add__argument("--split_compound_answers", action="store_true",
+        parser.add_argument("--split_compound_answers", action="store_true",
                              help="If true, split the T5 outputs into individual answers.")
         parser.add_argument("--group_qas", action="store_true",
                             help="If true, use group qas to get individual metrics.")

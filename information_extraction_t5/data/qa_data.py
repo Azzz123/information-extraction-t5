@@ -16,14 +16,19 @@ class QADataModule(pl.LightningDataModule):
         self.hparams.update(vars(hparams))
 
     def setup(self, stage: Optional[str] = None):
-        # 1. 确定并创建数据特征缓存目录
-        cache_dir = self.hparams.cache_dir if self.hparams.cache_dir else "./.cache"
+        # --- 核心修改：更鲁棒地处理缓存路径 ---
+        # 1. 优先使用 hparams 中的 cache_dir，如果不存在，则使用 output_dir 下的 cache 子目录
+        base_output_dir = self.hparams.output_dir if self.hparams.output_dir else "output"
+        cache_dir = self.hparams.cache_dir if self.hparams.cache_dir else os.path.join(base_output_dir, "cache")
+
         os.makedirs(cache_dir, exist_ok=True)
+        # 添加一个调试打印，确认路径是否正确
         print(f"INFO: Using data feature cache directory: {cache_dir}")
         model_name_suffix = list(filter(None, self.hparams.model_name_or_path.split('/'))).pop()
 
         # 2. 准备训练和验证数据集
         if stage == 'fit' or stage is None:
+            # 后续代码保持不变，因为 cache_dir 变量已经被正确设置
             cached_train_file = os.path.join(cache_dir, f"cached_train_{model_name_suffix}")
             cached_valid_file = os.path.join(cache_dir, f"cached_valid_{model_name_suffix}")
 
@@ -33,6 +38,7 @@ class QADataModule(pl.LightningDataModule):
                 self.train_dataset = torch.load(cached_train_file)["dataset"]
                 self.valid_dataset = torch.load(cached_valid_file)["dataset"]
             else:
+                # ... (后续代码完全保持不变) ...
                 print("Creating features from dataset files...")
                 processor = SquadV1Processor()
                 examples_train = processor.get_dev_examples(None, filename=self.hparams.train_file)
@@ -56,7 +62,7 @@ class QADataModule(pl.LightningDataModule):
             print(f'>> train-dataset: {len(self.train_dataset)} samples')
             print(f'>> valid-dataset: {len(self.valid_dataset)} samples')
 
-        # 3. 准备测试数据集
+        # 3. 准备测试数据集 (这部分逻辑也类似，保持不变即可)
         if stage == 'test' or stage is None:
             assert self.hparams.test_file, 'test_file must be specificed'
             cached_test_file = os.path.join(cache_dir, f"cached_test_{model_name_suffix}")
@@ -95,8 +101,8 @@ class QADataModule(pl.LightningDataModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = configargparse.ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument("--cache_dir", default=None, type=str,
-                            help="Path to directory to store the cached datasets.")
+        # parser.add_argument("--cache_dir", default=None, type=str,
+        #                     help="Path to directory to store the cached datasets.")
         parser.add_argument("--data_dir", default=None, type=str,
                             help="The input data dir. Should contain the .json files for the task.")
         parser.add_argument("--train_file", default=None, type=str, help="The input training file.")

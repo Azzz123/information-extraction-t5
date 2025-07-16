@@ -52,21 +52,38 @@ def compute_f1(a_gold, a_pred):
     return f1
 
 # --- 升级后的JSON评估函数 (返回P, R, F1, Exact) ---
+def make_hashable(obj):
+    """ 递归地将一个（可能包含列表和字典的）对象转换成可哈希的对象。"""
+    if isinstance(obj, dict):
+        return frozenset((k, make_hashable(v)) for k, v in sorted(obj.items()))
+    if isinstance(obj, list):
+        return tuple(make_hashable(e) for e in obj)
+    return obj
+
 def compute_prf1_json(a_gold_str, a_pred_str):
     """
     计算两个JSON字符串表示的因果关系对集合的Precision, Recall, F1和Exact Match。
+    这个版本能正确处理嵌套的JSON结构。
     """
+    gold_set = set()
     try:
         gold_data = json.loads(a_gold_str)
-        gold_set = {frozenset(item.items()) for item in gold_data}
-    except (json.JSONDecodeError, TypeError, AttributeError):
-        gold_set = set()
+        if isinstance(gold_data, list):
+            for item in gold_data:
+                gold_set.add(make_hashable(item))
+    except (json.JSONDecodeError, TypeError):
+        # 如果解析失败或结构无法哈希，gold_set 保持为空
+        pass
 
+    pred_set = set()
     try:
         pred_data = json.loads(a_pred_str)
-        pred_set = {frozenset(item.items()) for item in pred_data}
-    except (json.JSONDecodeError, TypeError, AttributeError):
-        pred_set = set()
+        if isinstance(pred_data, list):
+            for item in pred_data:
+                pred_set.add(make_hashable(item))
+    except (json.JSONDecodeError, TypeError):
+        # 如果解析失败或结构无法哈希，pred_set 保持为空
+        pass
 
     true_positives = len(gold_set.intersection(pred_set))
     false_positives = len(pred_set - gold_set)
