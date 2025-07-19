@@ -7,8 +7,9 @@
 node_modules/
 dist/
 models/
-output/cache
-output/checkpoints
+!output/
+output/cache/
+output/checkpoints/
 !output/results/
 
 # Compiled Java class files
