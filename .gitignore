@@ -7,9 +7,8 @@
 node_modules/
 dist/
 models/
-output/**/*
-!output/**/*.txt
-!output/**/.gitkeep
+output/cache/
+output/checkpoints/
 
 # Compiled Java class files
 *.class
@@ -25,7 +24,6 @@ output/**/*
 
 # Maven
 target/
-dist/
 
 # JetBrains IDE
 .idea/
