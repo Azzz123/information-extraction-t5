@@ -7,10 +7,8 @@
 node_modules/
 dist/
 models/
-!output/
 output/cache/
 output/checkpoints/
-!output/results/
 
 # Compiled Java class files
 *.class
