@@ -7,8 +7,8 @@
 node_modules/
 dist/
 models/
-output/*
-!output/**/.gitkeep
+output/cache
+output/checkpoints
 !output/results/
 
 # Compiled Java class files
